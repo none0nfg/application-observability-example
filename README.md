@@ -10,6 +10,7 @@
 1. Pull repository
 2. ```docker compose build```
 3. ```docker compose up -d```, Try to run this command few times till each dependency start
+4. After first ```docker compose up -d``` enable GELF Udp input in graylog to make possible to start other applications
 
 application is `app`, `app2` in docker-compose. 
 Application routes:
