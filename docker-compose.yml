@@ -1,0 +1,134 @@
+version: "3.8"
+services:
+  app:
+    image: obser_test:latest
+    build: .
+    ports:
+      - 5000:5000
+    environment:
+      OTEL_SERVICE_NAME: app1
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://otel-collector:4317"
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "http://otel-collector:4317"
+    logging:
+      driver: "gelf"
+      options:
+        gelf-address: "udp://172.20.0.11:12201"
+  app2:
+    image: obser_test:latest
+    build: .
+    ports:
+      - 5001:5000
+    environment:
+      OTEL_SERVICE_NAME: app2
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://otel-collector:4317"
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "http://otel-collector:4317"
+    logging:
+      driver: "gelf"
+      options:
+        gelf-address: "udp://172.20.0.11:12201"
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - 1888:1888 # pprof extension
+      - 8888:8888 # Prometheus metrics exposed by the collector
+      - 8889:8889 # Prometheus exporter metrics
+      - 13133:13133 # health_check extension
+      - 4317:4317 # OTLP gRPC receiver
+      - 4318:4318 # OTLP http receiver
+      - 55679:55679 # zpages extension
+    logging:
+      driver: "gelf"
+      options:
+        gelf-address: "udp://172.20.0.11:12201"
+  prometheus:
+    image: prom/prometheus:v2.37.9
+    command: --web.enable-remote-write-receiver
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus/prometheus.yaml:/prometheus/prometheus.yml
+    logging:
+      driver: "gelf"
+      options:
+        gelf-address: "udp://172.20.0.11:12201"
+  grafana:
+    image: grafana/grafana:10.0.3
+    ports:
+      - 3000:3000
+    volumes:
+      - ./grafana:/var/lib/grafana
+  jaeger-collector:
+    image: jaegertracing/jaeger-collector:1.47.0
+    restart: always
+    environment:
+      ES_SERVER_URLS: http://elasticsearch:9200
+      SPAN_STORAGE_TYPE: elasticsearch
+      METRICS_STORAGE_TYPE: prometheus
+      PROMETHEUS_SERVER_URL: http://prometheus:9090
+    ports:
+      - 14268:14268
+      - 14269:14269
+      - 14250:14250
+    logging:
+      driver: "gelf"
+      options:
+        gelf-address: "udp://172.20.0.11:12201"
+  jaeger-query:
+    image: jaegertracing/jaeger-query:1.47.0
+    command: --prometheus.query.support-spanmetrics-connector=true
+    environment:
+      ES_SERVER_URLS: http://elasticsearch:9200
+      SPAN_STORAGE_TYPE: elasticsearch
+      METRICS_STORAGE_TYPE: prometheus
+      PROMETHEUS_SERVER_URL: http://prometheus:9090
+    restart: always
+    ports:
+      - 16686:16686
+    logging:
+      driver: "gelf"
+      options:
+        gelf-address: "udp://172.20.0.11:12201"
+  elasticsearch:
+    image: elasticsearch:7.17.10
+    ports: 
+      - 9200:9200
+    volumes:
+      - ./elasticsearch:/usr/share/elasticsearch/data
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: false
+      xpack.security.http.ssl.enabled: false
+      xpack.security.transport.ssl.enabled: false
+  graylog:
+    image: graylog/graylog:5.1.4
+    entrypoint: /usr/bin/tini -- wait-for-it elasticsearch:9200 --  /docker-entrypoint.sh
+    environment:
+      GRAYLOG_HTTP_EXTERNAL_URI: "http://172.18.11.243:9000/"
+      GRAYLOG_PASSWORD_SECRET: somepasswordpepper
+      GRAYLOG_ROOT_PASSWORD_SHA2: 8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918 # login: admin, password: admin
+    volumes:
+      - graylog_data:/usr/share/graylog/data
+    ports:
+      - 9000:9000
+    depends_on:
+      - mongo
+      - elasticsearch
+  mongo:
+    image: mongo:6.0-rc
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  graylog_data:
+    driver: local
+  mongo_data:
+    driver: local
+
+
+

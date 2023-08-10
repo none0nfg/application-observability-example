@@ -1,0 +1,31 @@
+receivers:
+  otlp: # the OTLP receiver the app is sending traces to
+    protocols:
+      grpc:
+      http:
+
+processors:
+  batch:
+
+connectors:
+  spanmetrics:
+
+exporters:
+  jaeger: # the Jaeger exporter, to ingest traces to backend
+    endpoint: http://jaeger-collector:14250
+    tls:
+      insecure: true
+  prometheusremotewrite:
+    endpoint: 'http://prometheus:9090/api/v1/write'
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [ otlp ]
+      processors: [ batch ]
+      exporters: [ spanmetrics, jaeger ]
+    metrics/spanmetrics:
+      receivers: [ spanmetrics ]
+      exporters: [ prometheusremotewrite ]
